@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Verify {{ product_id }} — Authentix{% endblock %}
+{% block content %}
+<div class="wrap section">
+  <div class="flow-shell">
+
+    <div class="flow-card" id="lookupCard">
+      <div class="flow-head">
+        <span class="eyebrow">Verifying against the ledger</span>
+        <h1>Product {{ product_id }}</h1>
+      </div>
+      <div class="alert alert-error" id="lookupError"></div>
+      <div id="lookupLoading" style="text-align:center; color: var(--ink-faint); padding: 20px 0;">
+        <div class="spinner" style="margin: 0 auto 12px;"></div>
+        Checking the blockchain record…
+      </div>
+      <div id="productInfo" style="display:none;">
+        <div class="compare-grid" style="grid-template-columns: 1fr;">
+          <figure>
+            <img id="originalPreview" alt="Registered reference image">
+            <figcaption>Manufacturer's registered reference image</figcaption>
+          </figure>
+        </div>
+        <div class="chain-receipt" style="margin-bottom: 22px;">
+          <div class="row"><span>Product</span><span id="infoName" style="font-family:var(--font-body); text-align:right;"></span></div>
+          <div class="row"><span>Manufacturer</span><span id="infoManufacturer" style="font-family:var(--font-body); text-align:right;"></span></div>
+          <div class="row"><span>Ledger status</span><span id="infoOnChain" style="font-family:var(--font-body); text-align:right;"></span></div>
+        </div>
+
+        <div class="field">
+          <label>Photograph or upload the actual product you have</label>
+          <div class="dropzone" id="dropzone">
+            <input type="file" id="capturedImage" accept="image/*" capture="environment">
+            <div class="dropzone-icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M4 8h3l2-2h6l2 2h3v11a1 1 0 01-1 1H5a1 1 0 01-1-1V8z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.4" stroke="currentColor" stroke-width="1.8"/></svg>
+            </div>
+            <b>Take a photo, or click to upload</b>
+            <span>The AI compares this against the registered image above.</span>
+            <img class="preview-img" id="capturedPreview" alt="">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-block" id="analyzeBtn" disabled>Analyze product</button>
+      </div>
+    </div>
+
+    <div class="flow-card" id="analyzingCard" style="display:none; margin-top: 24px; text-align:center;">
+      <div class="flow-head">
+        <span class="eyebrow">AI analysis</span>
+        <h1>Checking this product</h1>
+      </div>
+      <div class="loading-steps" id="loadingSteps">
+        <div class="l-step" data-step="0"><span class="spinner"></span> Identifying important visual regions</div>
+        <div class="l-step" data-step="1"><span class="spinner"></span> Comparing regions with the original image</div>
+        <div class="l-step" data-step="2"><span class="spinner"></span> Calculating similarity score</div>
+        <div class="l-step" data-step="3"><span class="spinner"></span> Applying the verdict threshold</div>
+      </div>
+    </div>
+
+    <div class="flow-card result-panel" id="resultCard" style="display:none; margin-top: 24px;">
+      <div class="flow-head">
+        <span class="eyebrow" id="resultEyebrow">Result</span>
+        <h1 id="resultProductName"></h1>
+      </div>
+      <div id="resultVerdictBadge"></div>
+      <div class="meter"><div class="meter-fill" id="resultMeterFill"></div></div>
+      <p style="color: var(--ink-soft); font-size: .9rem;"><span id="resultSimilarity"></span>% similarity to the registered original · <span id="resultRegions"></span> regions analyzed</p>
+
+      <div class="compare-grid">
+        <figure><img id="compareOriginal" alt="Original"><figcaption>Registered original</figcaption></figure>
+        <figure><img id="compareCaptured" alt="Captured"><figcaption>What was scanned</figcaption></figure>
+      </div>
+
+      <a href="{{ url_for('verify_landing') }}" class="btn btn-outline btn-block">Verify another product</a>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>const PRODUCT_ID = {{ product_id | tojson }};</script>
+<script src="{{ url_for('static', filename='js/verify.js') }}"></script>
+{% endblock %}

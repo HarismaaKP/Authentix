@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Register a product — Authentix{% endblock %}
+{% block content %}
+<div class="wrap section">
+  <div class="flow-shell">
+
+    <div class="flow-card" id="registerCard">
+      <div class="flow-head">
+        <span class="eyebrow">Manufacturer</span>
+        <h1>Register a product</h1>
+        <p>This commits the product's identity and its reference image to the blockchain.</p>
+      </div>
+
+      <div class="alert alert-error" id="registerError"></div>
+
+      <form id="registerForm">
+        <div class="field">
+          <label for="name">Product name</label>
+          <input type="text" id="name" name="name" placeholder="e.g. Aurora Leather Wallet — Walnut" required>
+        </div>
+        <div class="field">
+          <label for="manufacturer">Manufacturer name</label>
+          <input type="text" id="manufacturer" name="manufacturer" placeholder="e.g. Aurora Goods Co." required>
+        </div>
+        <div class="field">
+          <label for="description">Description <span style="font-weight:400; color: var(--ink-faint);">(optional)</span></label>
+          <textarea id="description" name="description" placeholder="Batch, material, or anything that helps identify this product."></textarea>
+        </div>
+        <div class="field">
+          <label>Original product image</label>
+          <div class="dropzone" id="dropzone">
+            <input type="file" id="originalImage" name="original_image" accept="image/*" required>
+            <div class="dropzone-icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </div>
+            <b>Drop the reference photo, or click to browse</b>
+            <span>This is the image every future scan gets compared against.</span>
+            <img class="preview-img" id="previewImg" alt="">
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block" id="registerSubmit">Register on the blockchain</button>
+      </form>
+    </div>
+
+    <div class="flow-card" id="resultCard" style="display:none; margin-top: 24px;">
+      <div class="flow-head">
+        <span class="eyebrow">Registered</span>
+        <h1 id="resultProductName"></h1>
+        <p>Print this QR code and attach it to the physical product.</p>
+      </div>
+      <div class="qr-result">
+        <img id="resultQr" alt="Product QR code">
+        <div class="chain-receipt">
+          <div class="row"><span>Product ID</span><span id="resultProductId"></span></div>
+          <div class="row"><span>Ledger mode</span><span id="resultChainMode"></span></div>
+          <div class="row"><span>Block index</span><span id="resultBlockIndex"></span></div>
+          <div class="row"><span>Transaction hash</span><span id="resultTxHash"></span></div>
+        </div>
+        <a href="#" target="_blank" class="btn btn-outline btn-block" id="resultVerifyLink">Open the verification page</a>
+        <button class="btn btn-primary btn-block" id="registerAnother">Register another product</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/manufacturer.js') }}"></script>
+{% endblock %}

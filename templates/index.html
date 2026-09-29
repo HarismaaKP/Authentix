@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="wrap">
+  <section class="hero">
+    <div>
+      <span class="eyebrow">Blockchain-verified authenticity</span>
+      <h1>Know what's real before you buy it.</h1>
+      <p class="hero-sub">Authentix lets manufacturers register products on a tamper-evident ledger and gives customers an instant, AI-checked answer when they scan the QR code: authentic, suspicious, or counterfeit.</p>
+      <div class="hero-actions">
+        <a href="{{ url_for('manufacturer_page') }}" class="btn btn-primary">Register a product</a>
+        <a href="{{ url_for('verify_landing') }}" class="btn btn-outline">Verify a product</a>
+      </div>
+      <div class="hero-stats">
+        <div class="hero-stat"><b>{{ stats.products }}</b><span>Products on ledger</span></div>
+        <div class="hero-stat"><b>{{ stats.scans }}</b><span>Verifications run</span></div>
+        <div class="hero-stat"><b>{{ "Intact" if stats.chain.integrity_ok else "Flagged" }}</b><span>Ledger integrity</span></div>
+      </div>
+    </div>
+
+    <div class="scan-card">
+      <div class="scan-frame">
+        <div class="qr-grid" id="heroQrGrid"></div>
+        <div class="scan-beam"></div>
+      </div>
+      <div class="verdict-pill"></div>
+    </div>
+  </section>
+</div>
+
+<div class="wrap">
+  <section class="section-tight">
+    <h2 style="font-size: clamp(1.6rem, 3vw, 2.1rem); max-width: 24ch;">One ledger, two very different jobs.</h2>
+    <p class="hero-sub" style="margin-top: 12px;">Manufacturers commit a product's identity to the chain once. Customers check any unit against it in seconds.</p>
+
+    <div class="paths" style="margin-top: 40px;">
+      <div class="path-card manufacturer">
+        <div class="path-head">
+          <span class="path-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 21V8l8-5 8 5v13" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 21v-7h6v7" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+          </span>
+          <h3>Manufacturer</h3>
+        </div>
+        <ul class="steps">
+          <li><span class="step-num">1</span><div class="step-body"><b>Register the product</b><span>Name, description, and the original reference photo.</span></div></li>
+          <li><span class="step-num">2</span><div class="step-body"><b>Get a product ID</b><span>A unique identifier tied to the image's fingerprint.</span></div></li>
+          <li><span class="step-num">3</span><div class="step-body"><b>Commit it to the ledger</b><span>The ID and image hash are written to the blockchain.</span></div></li>
+          <li><span class="step-num">4</span><div class="step-body"><b>Print and attach the QR</b><span>Generated automatically, ready to affix to the product.</span></div></li>
+        </ul>
+      </div>
+
+      <div class="path-card customer">
+        <div class="path-head">
+          <span class="path-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.8"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.8"/><path d="M14 14h3v3h-3zM19 14h2M14 19h2M19 19h2" stroke="currentColor" stroke-width="1.8"/></svg>
+          </span>
+          <h3>Customer</h3>
+        </div>
+        <ul class="steps">
+          <li><span class="step-num">1</span><div class="step-body"><b>Scan the QR code</b><span>Camera scan, or upload a photo of the code.</span></div></li>
+          <li><span class="step-num">2</span><div class="step-body"><b>Pull the registered record</b><span>Verified against the blockchain in real time.</span></div></li>
+          <li><span class="step-num">3</span><div class="step-body"><b>Photograph the item in hand</b><span>The AI locates the regions that matter most.</span></div></li>
+          <li><span class="step-num">4</span><div class="step-body"><b>Get a verdict</b><span>A similarity score against the original, with a clear result.</span></div></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="wrap">
+  <section class="section-tight">
+    <h2 style="font-size: clamp(1.6rem, 3vw, 2.1rem);">Three possible verdicts.</h2>
+    <div class="legend" style="margin-top: 28px;">
+      <div class="legend-card authentic">
+        <b>Authentic</b>
+        <span>The captured image's key regions closely match the manufacturer's original. High confidence.</span>
+      </div>
+      <div class="legend-card suspicious">
+        <b>Suspicious</b>
+        <span>Partial match. Some regions align, others don't — worth a closer look before trusting it.</span>
+      </div>
+      <div class="legend-card counterfeit">
+        <b>Counterfeit</b>
+        <span>The important visual regions diverge significantly from the registered original.</span>
+      </div>
+    </div>
+  </section>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Build the hero QR-like grid once (decorative, deterministic pattern)
+  (function () {
+    const grid = document.getElementById('heroQrGrid');
+    if (!grid) return;
+    const pattern = [
+      1,1,1,0,1,1,1,
+      1,0,1,0,1,0,1,
+      1,1,1,0,1,1,1,
+      0,0,0,1,0,0,0,
+      1,1,1,0,1,1,1,
+      1,0,1,0,1,0,1,
+      1,1,1,0,1,1,1
+    ];
+    pattern.forEach(v => {
+      const cell = document.createElement('i');
+      if (!v) cell.classList.add('off');
+      grid.appendChild(cell);
+    });
+  })();
+</script>
+{% endblock %}

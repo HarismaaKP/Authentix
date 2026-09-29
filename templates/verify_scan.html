@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Verify a product — Authentix{% endblock %}
+
+{% block content %}
+
+<div class="wrap section">
+  <div class="flow-shell">
+
+    <div class="flow-card">
+
+      <div class="flow-head">
+        <span class="eyebrow">Customer</span>
+
+        <h1>Scan the product's QR code</h1>
+
+        <p>
+          Point your camera at the QR code on the product,
+          or upload a photo of it.
+        </p>
+      </div>
+
+      <div class="alert alert-error" id="scanError"></div>
+
+      <div class="scanner-shell">
+
+        <!-- Camera -->
+        <div class="scanner-viewport" id="scannerViewport">
+
+          <video
+            id="scannerVideo"
+            playsinline
+            muted>
+          </video>
+
+          <div class="scanner-reticle"></div>
+
+        </div>
+
+        <p class="scanner-hint" id="scannerHint">
+          Requesting camera access…
+        </p>
+
+        <div class="divider-or">
+          or
+        </div>
+
+        <!-- QR Image Upload -->
+        <label
+          for="qrUpload"
+          class="btn btn-outline btn-block"
+          style="cursor: pointer;">
+
+          Upload a photo of the QR code
+
+        </label>
+
+        <input
+          type="file"
+          id="qrUpload"
+          accept="image/png,image/jpeg,image/jpg,image/webp"
+          style="display: none;">
+
+        <div class="divider-or">
+          or enter it manually
+        </div>
+
+        <!-- Manual Product ID -->
+        <form
+          id="manualForm"
+          style="width: 100%; display: flex; gap: 10px;">
+
+          <input
+            type="text"
+            id="manualId"
+            placeholder="e.g. AUX-7F2A9C1B0E4D"
+            autocomplete="off"
+            style="
+              flex: 1;
+              border: 1.5px solid var(--line);
+              border-radius: var(--radius-s);
+              padding: 12px 14px;
+              font-family: var(--font-body);
+            "
+          >
+
+          <button
+            type="submit"
+            class="btn btn-primary">
+
+            Go
+
+          </button>
+
+        </form>
+
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+
+<!-- QR Code Scanner Library -->
+<script
+  src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js">
+</script>
+
+<!-- Authentix QR Scanner -->
+<script
+  src="{{ url_for('static', filename='js/scanner.js') }}">
+</script>
+
+{% endblock %}

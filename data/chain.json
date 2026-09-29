@@ -1,0 +1,26 @@
+[
+  {
+    "index": 0,
+    "product_id": "GENESIS",
+    "image_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "timestamp": "2026-09-12T04:38:26.075906+00:00",
+    "hash": "82547699ab0cad9a177f8ab679c220d44ace8a9972206d845bf068671f2351cb"
+  },
+  {
+    "index": 1,
+    "product_id": "AUX-927D04151550",
+    "image_hash": "39595d8db7b07b5b039168ee167e2e522a0aa843da5c2556e47395cf07b15a1e",
+    "prev_hash": "82547699ab0cad9a177f8ab679c220d44ace8a9972206d845bf068671f2351cb",
+    "timestamp": "2026-09-12T04:42:36.948647+00:00",
+    "hash": "dfdf1a1eb1ce6fdadd5355118f14f8e5152223e21dc17251dd39e49c40f0fae9"
+  },
+  {
+    "index": 2,
+    "product_id": "AUX-1D091F7E720D",
+    "image_hash": "029a1467f17e86a80369f372eae91c549eed33615910e495e313014e4e2da7da",
+    "prev_hash": "dfdf1a1eb1ce6fdadd5355118f14f8e5152223e21dc17251dd39e49c40f0fae9",
+    "timestamp": "2026-09-23T08:35:52.712369+00:00",
+    "hash": "f83aebd4717ec656ab7930ac2237edd586cdf607e3be35b755c1c60e6c13edfc"
+  }
+]
