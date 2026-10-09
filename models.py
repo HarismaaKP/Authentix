@@ -125,19 +125,19 @@
 #     }
 
 
+
 """
-Data layer for Authentix.
+Authentix database layer.
 
 Primary storage:
-    MongoDB using MONGO_URI environment variable.
+    MongoDB Atlas using MONGO_URI and MONGO_DB_NAME.
 
-Local development:
-    If MongoDB is unavailable, a JSON file store is used.
+Fallback storage:
+    JSON files when MongoDB is unavailable.
 
-On Vercel:
-    JSON fallback uses /tmp because the deployed filesystem is not
-    persistent. For real deployment, MongoDB Atlas should be configured
-    through MONGO_URI.
+Note:
+    Vercel's /tmp directory is temporary. JSON fallback data is
+    not permanent and may not be shared between serverless instances.
 """
 
 import os
@@ -152,7 +152,6 @@ from datetime import datetime, timezone
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Vercel filesystem is read-only except for /tmp.
 if os.environ.get("VERCEL"):
     DATA_DIR = "/tmp/authentix_data"
 else:
@@ -167,143 +166,205 @@ _lock = threading.Lock()
 
 
 def _now():
+    """Return the current UTC timestamp in ISO format."""
     return datetime.now(timezone.utc).isoformat()
 
 
 # ---------------------------------------------------------------------
-# JSON fallback store
+# JSON fallback collection
 # ---------------------------------------------------------------------
 
 class _JSONCollection:
+    """Small JSON-based fallback with basic MongoDB-like operations."""
 
-    def __init__(self, path):
-        self.path = path
+    def __init__(self, filepath):
+        self.filepath = filepath
+        self._ensure_file()
 
-        if not os.path.exists(path):
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump([], f)
+    def _ensure_file(self):
+        os.makedirs(os.path.dirname(self.filepath), exist_ok=True)
+
+        if not os.path.exists(self.filepath):
+            with open(self.filepath, "w", encoding="utf-8") as file:
+                json.dump([], file)
 
     def _read(self):
+        self._ensure_file()
+
         try:
-            with open(self.path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
+            with open(self.filepath, "r", encoding="utf-8") as file:
+                data = json.load(file)
+                return data if isinstance(data, list) else []
+        except (json.JSONDecodeError, OSError):
             return []
 
-    def _write(self, docs):
-        with open(self.path, "w", encoding="utf-8") as f:
-            json.dump(docs, f, indent=2, default=str)
+    def _write(self, documents):
+        temporary_file = self.filepath + ".tmp"
 
-    def insert_one(self, doc):
+        with open(temporary_file, "w", encoding="utf-8") as file:
+            json.dump(documents, file, indent=2, default=str)
+
+        os.replace(temporary_file, self.filepath)
+
+    @staticmethod
+    def _matches(document, query):
+        query = query or {}
+
+        for key, expected in query.items():
+            if document.get(key) != expected:
+                return False
+
+        return True
+
+    def insert_one(self, document):
+        new_document = dict(document)
+
         with _lock:
-            docs = self._read()
-            docs.append(doc)
-            self._write(docs)
+            documents = self._read()
 
-        return doc
+            if "_id" not in new_document:
+                new_document["_id"] = (
+                    f"json_{datetime.now(timezone.utc).timestamp()}"
+                )
 
-    def find_one(self, query):
-        docs = self._read()
+            documents.append(new_document)
+            self._write(documents)
 
-        for document in docs:
-            if all(
-                document.get(key) == value
-                for key, value in query.items()
-            ):
-                return document
+        return {"inserted_id": new_document["_id"]}
+
+    def find_one(self, query=None):
+        with _lock:
+            documents = self._read()
+
+            for document in documents:
+                if self._matches(document, query):
+                    return dict(document)
 
         return None
 
     def find(self, query=None):
-        docs = self._read()
-
-        if not query:
-            return docs
-
-        return [
-            document
-            for document in docs
-            if all(
-                document.get(key) == value
-                for key, value in query.items()
-            )
-        ]
-
-    def update_one(self, query, update):
         with _lock:
-            docs = self._read()
+            documents = self._read()
 
-            for document in docs:
-                if all(
-                    document.get(key) == value
-                    for key, value in query.items()
-                ):
-                    document.update(update.get("$set", {}))
-                    break
+            return [
+                dict(document)
+                for document in documents
+                if self._matches(document, query)
+            ]
 
-            self._write(docs)
+    def update_one(self, query, update, upsert=False):
+        with _lock:
+            documents = self._read()
 
-    def count(self):
-        return len(self._read())
+            for document in documents:
+                if self._matches(document, query):
+                    if "$set" in update:
+                        document.update(update["$set"])
+                    self._write(documents)
+                    return {"matched_count": 1, "modified_count": 1}
+
+            if upsert:
+                new_document = dict(query or {})
+                new_document.update(update.get("$set", {}))
+
+                if "_id" not in new_document:
+                    new_document["_id"] = (
+                        f"json_{datetime.now(timezone.utc).timestamp()}"
+                    )
+
+                documents.append(new_document)
+                self._write(documents)
+
+                return {"matched_count": 0, "upserted_id": new_document["_id"]}
+
+        return {"matched_count": 0, "modified_count": 0}
+
+    def count_documents(self, query=None):
+        with _lock:
+            documents = self._read()
+
+            return sum(
+                1 for document in documents
+                if self._matches(document, query)
+            )
 
 
 # ---------------------------------------------------------------------
-# Database
+# Database manager
 # ---------------------------------------------------------------------
 
 class Database:
-    """
-    Unified database interface.
-
-    Uses MongoDB when MONGO_URI is available and reachable.
-    Otherwise falls back to JSON storage.
-    """
+    """Use MongoDB Atlas when configured; otherwise use JSON fallback."""
 
     def __init__(self):
-
-        # Initialize JSON fallback first.
         self.mode = "json"
+        self.connection_error = None
+        self.client = None
 
+        # Initialize fallback collections first.
         self.products = _JSONCollection(PRODUCTS_FILE)
         self.scans = _JSONCollection(SCANS_FILE)
 
-        # Try MongoDB.
         self._try_mongo()
 
     def _try_mongo(self):
+        uri = os.environ.get("MONGO_URI", "").strip()
 
-        uri = os.environ.get("MONGO_URI")
-
-        # On Vercel, do not try localhost MongoDB.
         if not uri:
-            self.mode = "json"
+            self.connection_error = "MONGO_URI is not configured"
+            print("MongoDB connection failed:", self.connection_error)
             return
+
+        client = None
 
         try:
             from pymongo import MongoClient
 
             client = MongoClient(
                 uri,
-                serverSelectionTimeoutMS=3000,
-                connectTimeoutMS=3000,
+                serverSelectionTimeoutMS=8000,
+                connectTimeoutMS=8000,
             )
 
-            # Check connection.
+            # Force a connection attempt and validate connectivity.
             client.admin.command("ping")
 
-            database = client["authentix"]
+            db_name = os.environ.get(
+                "MONGO_DB_NAME",
+                "authentix",
+            ).strip()
 
+            if not db_name:
+                db_name = "authentix"
+
+            database = client[db_name]
+
+            # Switch collections only after the connection succeeds.
             self.products = database["products"]
             self.scans = database["scans"]
-
+            self.client = client
             self.mode = "mongodb"
+            self.connection_error = None
 
-        except Exception as e:
+            print(
+                f"MongoDB Atlas connected successfully. Database: {db_name}"
+            )
 
-            print("MongoDB connection failed:", str(e))
-            print("Using JSON fallback store.")
+        except Exception as error:
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:
+                    pass
 
+            self.client = None
             self.mode = "json"
+            self.connection_error = (
+                f"{type(error).__name__}: {str(error)}"
+            )
+
+            print("MongoDB connection failed:", self.connection_error)
+            print("Using JSON fallback store.")
 
 
 # Create one shared database instance.
@@ -311,7 +372,7 @@ db = Database()
 
 
 # ---------------------------------------------------------------------
-# Product document
+# Product document factory
 # ---------------------------------------------------------------------
 
 def new_product_doc(
@@ -324,6 +385,8 @@ def new_product_doc(
     block_index,
     tx_hash,
 ):
+    """Create a document for a registered product."""
+
     return {
         "product_id": product_id,
         "name": name,
@@ -338,7 +401,7 @@ def new_product_doc(
 
 
 # ---------------------------------------------------------------------
-# Scan document
+# Verification scan document factory
 # ---------------------------------------------------------------------
 
 def new_scan_doc(
@@ -347,6 +410,8 @@ def new_scan_doc(
     verdict,
     captured_image_path,
 ):
+    """Create a document for a product verification scan."""
+
     return {
         "product_id": product_id,
         "similarity": similarity,

@@ -11,7 +11,7 @@
 
 Flask==3.0.3
 Flask-Cors==4.0.1
-pymongo==4.8.0
+pymongo[srv]==4.8.0
 cloudinary==1.41.0
 qrcode==7.4.2
 Pillow==10.4.0
