@@ -404,6 +404,7 @@
 #         port=5000
 #     )
 
+
 import os
 import uuid
 import tempfile
@@ -432,7 +433,7 @@ ALLOWED_EXT = {"png", "jpg", "jpeg", "webp"}
 app = Flask(__name__)
 CORS(app)
 
-# Maximum upload size = 16 MB
+# Maximum upload size: 16 MB
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
 
@@ -459,37 +460,28 @@ def allowed_file(filename):
         return False
 
     extension = filename.rsplit(".", 1)[1].lower()
-
     return extension in ALLOWED_EXT
 
 
 def save_temp_upload(file_storage, prefix):
-    """
-    Save an uploaded file temporarily.
+    """Save an uploaded image temporarily."""
 
-    Vercel allows temporary files in /tmp.
-    These files are NOT used for permanent storage.
-    """
+    original_filename = file_storage.filename or ""
 
-    extension = file_storage.filename.rsplit(".", 1)[1].lower()
+    if "." not in original_filename:
+        raise ValueError("The uploaded file must have an extension.")
+
+    extension = original_filename.rsplit(".", 1)[1].lower()
 
     filename = f"{prefix}_{uuid.uuid4().hex[:10]}.{extension}"
-
-    temp_dir = tempfile.gettempdir()
-
-    path = os.path.join(temp_dir, filename)
+    path = os.path.join(tempfile.gettempdir(), filename)
 
     file_storage.save(path)
-
     return path
 
 
 def upload_to_cloudinary(file_path, folder, public_id=None):
-    """
-    Upload an image to Cloudinary.
-
-    Returns the permanent HTTPS image URL.
-    """
+    """Upload an image and return its permanent HTTPS URL."""
 
     result = uploader.upload(
         file_path,
@@ -502,21 +494,12 @@ def upload_to_cloudinary(file_path, folder, public_id=None):
 
 
 def download_to_temp(url, prefix="download"):
-    """
-    Download a Cloudinary image temporarily for AI comparison.
-    """
+    """Download a registered image temporarily for comparison."""
 
-    extension = ".jpg"
-
-    filename = f"{prefix}_{uuid.uuid4().hex[:10]}{extension}"
-
-    path = os.path.join(
-        tempfile.gettempdir(),
-        filename
-    )
+    filename = f"{prefix}_{uuid.uuid4().hex[:10]}.jpg"
+    path = os.path.join(tempfile.gettempdir(), filename)
 
     urllib.request.urlretrieve(url, path)
-
     return path
 
 
@@ -536,20 +519,22 @@ def remove_temp_file(path):
 
 @app.route("/")
 def home():
-
     try:
         products = len(list(db.products.find({})))
-    except Exception:
+    except Exception as e:
+        print("Product count error:", str(e))
         products = 0
 
     try:
         scans = len(list(db.scans.find({})))
-    except Exception:
+    except Exception as e:
+        print("Scan count error:", str(e))
         scans = 0
 
     try:
         chain_status = chain.chain_status()
-    except Exception:
+    except Exception as e:
+        print("Blockchain status error:", str(e))
         chain_status = {
             "mode": "unavailable",
             "integrity_ok": False,
@@ -562,34 +547,24 @@ def home():
         "chain": chain_status,
     }
 
-    return render_template(
-        "index.html",
-        stats=stats
-    )
+    return render_template("index.html", stats=stats)
 
 
 @app.route("/manufacturer")
 def manufacturer_page():
-
-    return render_template(
-        "manufacturer_register.html"
-    )
+    return render_template("manufacturer_register.html")
 
 
 @app.route("/verify")
 def verify_landing():
-
-    return render_template(
-        "verify_scan.html"
-    )
+    return render_template("verify_scan.html")
 
 
 @app.route("/verify/<product_id>")
 def verify_product_page(product_id):
-
     return render_template(
         "verify_upload.html",
-        product_id=product_id
+        product_id=product_id,
     )
 
 
@@ -599,31 +574,14 @@ def verify_product_page(product_id):
 
 @app.route("/api/register", methods=["POST"])
 def api_register():
-
     temp_path = None
 
     try:
+        name = request.form.get("name", "").strip()
+        manufacturer = request.form.get("manufacturer", "").strip()
+        description = request.form.get("description", "").strip()
+        image = request.files.get("original_image")
 
-        name = request.form.get(
-            "name",
-            ""
-        ).strip()
-
-        manufacturer = request.form.get(
-            "manufacturer",
-            ""
-        ).strip()
-
-        description = request.form.get(
-            "description",
-            ""
-        ).strip()
-
-        image = request.files.get(
-            "original_image"
-        )
-
-        # Validate input
         if (
             not name
             or not manufacturer
@@ -632,58 +590,32 @@ def api_register():
         ):
             return jsonify({
                 "ok": False,
-                "error": "Missing or invalid fields."
+                "error": "Missing or invalid fields.",
             }), 400
 
-        # -------------------------------------------------------------
-        # 1. Generate product ID
-        # -------------------------------------------------------------
+        # Generate product ID
+        product_id = generate_product_id(manufacturer, name)
 
-        product_id = generate_product_id(
-            manufacturer,
-            name
-        )
+        # Save uploaded image temporarily
+        temp_path = save_temp_upload(image, product_id)
 
-        # -------------------------------------------------------------
-        # 2. Save image temporarily
-        # -------------------------------------------------------------
+        # Generate SHA-256 image hash
+        image_hash = hash_image_file(temp_path)
 
-        temp_path = save_temp_upload(
-            image,
-            product_id
-        )
-
-        # -------------------------------------------------------------
-        # 3. Generate SHA-256 image hash
-        # -------------------------------------------------------------
-
-        image_hash = hash_image_file(
-            temp_path
-        )
-
-        # -------------------------------------------------------------
-        # 4. Upload original image to Cloudinary
-        # -------------------------------------------------------------
-
+        # Upload original image to Cloudinary
         image_url = upload_to_cloudinary(
             temp_path,
             "authentix/products",
-            product_id
+            product_id,
         )
 
-        # -------------------------------------------------------------
-        # 5. Register product on blockchain
-        # -------------------------------------------------------------
-
+        # Register product with the configured blockchain layer
         block_index, tx_hash = chain.register_product(
             product_id,
-            image_hash
+            image_hash,
         )
 
-        # -------------------------------------------------------------
-        # 6. Save product information in MongoDB
-        # -------------------------------------------------------------
-
+        # Create product document
         doc = new_product_doc(
             product_id,
             name,
@@ -692,25 +624,15 @@ def api_register():
             image_url,
             image_hash,
             block_index,
-            tx_hash
+            tx_hash,
         )
 
+        # Save using the configured database
         db.products.insert_one(doc)
 
-        # -------------------------------------------------------------
-        # 7. Generate QR code
-        # -------------------------------------------------------------
-
+        # Generate QR code
         base_url = request.host_url.rstrip("/")
-
-        qr_url, verify_url = generate_qr(
-            product_id,
-            base_url
-        )
-
-        # -------------------------------------------------------------
-        # Response
-        # -------------------------------------------------------------
+        qr_url, verify_url = generate_qr(product_id, base_url)
 
         return jsonify({
             "ok": True,
@@ -725,7 +647,6 @@ def api_register():
         })
 
     except Exception as e:
-
         print("Registration error:", str(e))
 
         return jsonify({
@@ -735,46 +656,31 @@ def api_register():
         }), 500
 
     finally:
-
-        remove_temp_file(
-            temp_path
-        )
+        remove_temp_file(temp_path)
 
 
 # ---------------------------------------------------------------------
-# Get product
+# Get registered product
 # ---------------------------------------------------------------------
 
 @app.route("/api/product/<product_id>")
 def api_get_product(product_id):
-
     try:
-
         product = db.products.find_one({
-            "product_id": product_id
+            "product_id": product_id,
         })
 
         if not product:
-
             return jsonify({
                 "ok": False,
-                "error": "Product not found."
+                "error": "Product not found.",
             }), 404
 
-        # Check blockchain record
-        record = chain.get_record(
-            product_id
-        )
-
+        record = chain.get_record(product_id)
         on_chain = record is not None
 
-        # Remove MongoDB ObjectId if present
-        if "_id" in product:
-
-            product.pop(
-                "_id",
-                None
-            )
+        # Remove MongoDB ObjectId before JSON serialization
+        product.pop("_id", None)
 
         return jsonify({
             "ok": True,
@@ -785,7 +691,6 @@ def api_get_product(product_id):
         })
 
     except Exception as e:
-
         print("Get product error:", str(e))
 
         return jsonify({
@@ -801,109 +706,72 @@ def api_get_product(product_id):
 
 @app.route("/api/verify/<product_id>", methods=["POST"])
 def api_verify(product_id):
-
     captured_path = None
     original_path = None
 
     try:
-
-        # -------------------------------------------------------------
-        # 1. Find registered product
-        # -------------------------------------------------------------
-
+        # Find registered product
         product = db.products.find_one({
-            "product_id": product_id
+            "product_id": product_id,
         })
 
         if not product:
-
             return jsonify({
                 "ok": False,
-                "error": "Product not found."
+                "error": "Product not found.",
             }), 404
 
-        # -------------------------------------------------------------
-        # 2. Get customer's uploaded image
-        # -------------------------------------------------------------
+        # Get customer's uploaded product image
+        image = request.files.get("captured_image")
 
-        image = request.files.get(
-            "captured_image"
-        )
-
-        if (
-            not image
-            or not allowed_file(image.filename)
-        ):
+        if not image or not allowed_file(image.filename):
             return jsonify({
                 "ok": False,
-                "error": "Please provide a product image."
+                "error": "Please provide a valid product image.",
             }), 400
 
-        # -------------------------------------------------------------
-        # 3. Save captured image temporarily
-        # -------------------------------------------------------------
-
+        # Save customer's image temporarily
         captured_path = save_temp_upload(
             image,
-            f"scan_{product_id}"
+            f"scan_{product_id}",
         )
 
-        # -------------------------------------------------------------
-        # 4. Upload captured image to Cloudinary
-        # -------------------------------------------------------------
-
+        # Upload customer's image to Cloudinary
         captured_url = upload_to_cloudinary(
             captured_path,
-            "authentix/scans"
+            "authentix/scans",
         )
 
-        # -------------------------------------------------------------
-        # 5. Download original registered image temporarily
-        # -------------------------------------------------------------
-
-        original_url = product.get(
-            "original_image_path"
-        )
+        # Get original registered image URL
+        original_url = product.get("original_image_path")
 
         if not original_url:
-
             return jsonify({
                 "ok": False,
-                "error": "Original product image is missing."
+                "error": "Original product image is missing.",
             }), 500
 
+        # Download original image temporarily
         original_path = download_to_temp(
             original_url,
-            "original"
+            "original",
         )
 
-        # -------------------------------------------------------------
-        # 6. Compare images using AI/CV module
-        # -------------------------------------------------------------
-
+        # Compare registered and captured images
         result = ai_verify.compare_images(
             original_path,
-            captured_path
+            captured_path,
         )
 
-        # -------------------------------------------------------------
-        # 7. Save verification scan in MongoDB
-        # -------------------------------------------------------------
-
+        # Save verification scan
         scan_doc = new_scan_doc(
             product_id,
             result["similarity"],
             result["verdict"],
-            captured_url
+            captured_url,
         )
 
-        db.scans.insert_one(
-            scan_doc
-        )
-
-        # -------------------------------------------------------------
-        # 8. Return result
-        # -------------------------------------------------------------
+        db.scans.insert_one(scan_doc)
 
         return jsonify({
             "ok": True,
@@ -920,7 +788,6 @@ def api_verify(product_id):
         })
 
     except Exception as e:
-
         print("Verification error:", str(e))
 
         return jsonify({
@@ -930,14 +797,8 @@ def api_verify(product_id):
         }), 500
 
     finally:
-
-        remove_temp_file(
-            captured_path
-        )
-
-        remove_temp_file(
-            original_path
-        )
+        remove_temp_file(captured_path)
+        remove_temp_file(original_path)
 
 
 # ---------------------------------------------------------------------
@@ -946,33 +807,36 @@ def api_verify(product_id):
 
 @app.route("/api/chain-status")
 def api_chain_status():
-
     try:
-
-        return jsonify(
-            chain.chain_status()
-        )
+        return jsonify(chain.chain_status())
 
     except Exception as e:
+        print("Blockchain status error:", str(e))
 
         return jsonify({
             "mode": "unavailable",
             "integrity_ok": False,
             "blocks": 0,
             "error": str(e),
-        })
+        }), 500
 
 
 # ---------------------------------------------------------------------
-# Health check
+# Health check and database diagnostics
 # ---------------------------------------------------------------------
 
 @app.route("/api/health")
 def health():
+    database_error = getattr(
+        db,
+        "connection_error",
+        "No database error details available. Check models.py.",
+    )
 
     return jsonify({
         "ok": True,
         "database": db.mode,
+        "database_error": database_error,
         "blockchain": chain.mode,
         "cloudinary": bool(
             os.environ.get("CLOUDINARY_CLOUD_NAME")
@@ -987,9 +851,8 @@ def health():
 # ---------------------------------------------------------------------
 
 if __name__ == "__main__":
-
     app.run(
         debug=True,
         host="0.0.0.0",
-        port=5000
+        port=5000,
     )
