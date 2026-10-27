@@ -1,0 +1,15 @@
+[1mdiff --git a/vercel.json b/vercel.json[m
+[1mindex a8081a0..36d2beb 100644[m
+[1m--- a/vercel.json[m
+[1m+++ b/vercel.json[m
+[36m@@ -1,5 +1,6 @@[m
+ [m
+[32m+[m
+[32m+[m
+ {[m
+[31m-  "$schema": "https://openapi.vercel.sh/vercel.json",[m
+[31m-  "version": 2[m
+[31m-}[m
+[32m+[m[32m  "$schema": "https://openapi.vercel.sh/vercel.json"[m
+[32m+[m[32m}[m
+\ No newline at end of file[m
