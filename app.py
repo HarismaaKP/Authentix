@@ -1,4 +1,3 @@
-
 # import os
 # import uuid
 # import tempfile
@@ -93,7 +92,19 @@
 #     filename = f"{prefix}_{uuid.uuid4().hex[:10]}.jpg"
 #     path = os.path.join(tempfile.gettempdir(), filename)
 
-#     urllib.request.urlretrieve(url, path)
+#     request_obj = urllib.request.Request(
+#         url,
+#         headers={"User-Agent": "Authentix/1.0"},
+#     )
+
+#     try:
+#         with urllib.request.urlopen(request_obj, timeout=20) as response:
+#             with open(path, "wb") as output_file:
+#                 output_file.write(response.read())
+#     except Exception:
+#         remove_temp_file(path)
+#         raise
+
 #     return path
 
 
@@ -193,7 +204,7 @@
 #         # Save uploaded image temporarily
 #         temp_path = save_temp_upload(image, product_id)
 
-#         # Generate SHA-256 image hash
+#         # Generate SHA-256 hash from the original uploaded file
 #         image_hash = hash_image_file(temp_path)
 
 #         # Upload original image to Cloudinary
@@ -203,7 +214,7 @@
 #             product_id,
 #         )
 
-#         # Register product with the configured blockchain layer
+#         # Register product with configured blockchain layer
 #         block_index, tx_hash = chain.register_product(
 #             product_id,
 #             image_hash,
@@ -221,7 +232,7 @@
 #             tx_hash,
 #         )
 
-#         # Save using the configured database
+#         # Save product
 #         db.products.insert_one(doc)
 
 #         # Generate QR code
@@ -315,7 +326,7 @@
 #                 "error": "Product not found.",
 #             }), 404
 
-#         # Get customer's uploaded product image
+#         # Get customer's uploaded image
 #         image = request.files.get("captured_image")
 
 #         if not image or not allowed_file(image.filename):
@@ -330,12 +341,6 @@
 #             f"scan_{product_id}",
 #         )
 
-#         # Upload customer's image to Cloudinary
-#         captured_url = upload_to_cloudinary(
-#             captured_path,
-#             "authentix/scans",
-#         )
-
 #         # Get original registered image URL
 #         original_url = product.get("original_image_path")
 
@@ -345,17 +350,61 @@
 #                 "error": "Original product image is missing.",
 #             }), 500
 
-#         # Download original image temporarily
-#         original_path = download_to_temp(
-#             original_url,
-#             "original",
-#         )
+#         # -------------------------------------------------------------
+#         # FIX: Check exact image hash before ORB comparison
+#         # -------------------------------------------------------------
 
-#         # Compare registered and captured images
-#         result = ai_verify.compare_images(
-#             original_path,
-#             captured_path,
-#         )
+#         captured_hash = hash_image_file(captured_path)
+#         registered_hash = product.get("image_hash")
+
+#         if registered_hash and captured_hash == registered_hash:
+#             # Uploaded file is byte-for-byte identical to the
+#             # image that was registered for this product.
+#             result = {
+#                 "similarity": 100.0,
+#                 "verdict": "AUTHENTIC",
+#                 "regions_analyzed": 0,
+#                 "deep_features_used": False,
+#             }
+
+#             print(
+#                 f"Exact image hash match for {product_id}: AUTHENTIC"
+#             )
+
+#         else:
+#             # Upload customer's image to Cloudinary
+#             captured_url = upload_to_cloudinary(
+#                 captured_path,
+#                 "authentix/scans",
+#             )
+
+#             # Download original only when visual comparison is needed
+#             original_path = download_to_temp(
+#                 original_url,
+#                 "original",
+#             )
+
+#             # Compare registered and captured images
+#             result = ai_verify.compare_images(
+#                 original_path,
+#                 captured_path,
+#             )
+
+#             print(
+#                 f"Visual comparison for {product_id}: {result}"
+#             )
+
+#         # -------------------------------------------------------------
+#         # Upload captured image for scan history
+#         # -------------------------------------------------------------
+
+#         # Upload in both branches. This ensures the exact-match case
+#         # also gets a captured image URL for the scan record.
+#         if registered_hash and captured_hash == registered_hash:
+#             captured_url = upload_to_cloudinary(
+#                 captured_path,
+#                 "authentix/scans",
+#             )
 
 #         # Save verification scan
 #         scan_doc = new_scan_doc(
@@ -764,46 +813,155 @@ def api_get_product(product_id):
 # Product verification
 # ---------------------------------------------------------------------
 
+
 @app.route("/api/verify/<product_id>", methods=["POST"])
 def api_verify(product_id):
     captured_path = None
     original_path = None
+    captured_url = None
 
     try:
-        # Find registered product
+        # 1. Find the registered product
         product = db.products.find_one({
-            "product_id": product_id,
+            "product_id": product_id
         })
 
         if not product:
             return jsonify({
                 "ok": False,
-                "error": "Product not found.",
+                "error": "Product not found."
             }), 404
 
-        # Get customer's uploaded image
+        # 2. Get the uploaded image
         image = request.files.get("captured_image")
 
         if not image or not allowed_file(image.filename):
             return jsonify({
                 "ok": False,
-                "error": "Please provide a valid product image.",
+                "error": "Please provide a valid product image."
             }), 400
 
-        # Save customer's image temporarily
+        # 3. Save the uploaded image temporarily
         captured_path = save_temp_upload(
             image,
-            f"scan_{product_id}",
+            f"scan_{product_id}"
         )
 
-        # Get original registered image URL
+        # 4. Get the registered image information
         original_url = product.get("original_image_path")
+        registered_hash = product.get("image_hash")
 
         if not original_url:
             return jsonify({
                 "ok": False,
-                "error": "Original product image is missing.",
+                "error": "Original product image is missing."
             }), 500
+
+        # 5. Calculate the uploaded image hash
+        captured_hash = hash_image_file(captured_path)
+
+        # 6. Print debugging information
+        print("===== AUTHENTIX VERIFICATION DEBUG =====")
+        print("Product ID:", product_id)
+        print("Uploaded filename:", image.filename)
+        print(
+            "Uploaded file size:",
+            os.path.getsize(captured_path)
+        )
+        print("Registered hash exists:", bool(registered_hash))
+        print("Captured hash:", captured_hash)
+        print("Registered hash:", registered_hash)
+
+        exact_match = bool(
+            registered_hash
+            and captured_hash == registered_hash
+        )
+
+        print("Exact hash match:", exact_match)
+        print("========================================")
+
+        # 7. Exact file match: no ORB comparison needed
+        if exact_match:
+            result = {
+                "similarity": 100.0,
+                "verdict": "AUTHENTIC",
+                "regions_analyzed": 0,
+                "deep_features_used": False
+            }
+
+            print(
+                "Exact image match: AUTHENTIC",
+                product_id
+            )
+
+        else:
+            # 8. Hash differs or is missing.
+            # Continue with visual comparison.
+            print(
+                "Hash mismatch or missing hash. "
+                "Running visual comparison."
+            )
+
+            original_path = download_to_temp(
+                original_url,
+                "original"
+            )
+
+            result = ai_verify.compare_images(
+                original_path,
+                captured_path
+            )
+
+            print("ORB comparison result:", result)
+
+        # 9. Upload the scanned image for scan history
+        captured_url = upload_to_cloudinary(
+            captured_path,
+            "authentix/scans"
+        )
+
+        # 10. Save scan history
+        scan_doc = new_scan_doc(
+            product_id,
+            result["similarity"],
+            result["verdict"],
+            captured_url
+        )
+
+        db.scans.insert_one(scan_doc)
+
+        # 11. Return the verification result
+        return jsonify({
+            "ok": True,
+            "product_name": product.get("name", ""),
+            "manufacturer": product.get("manufacturer", ""),
+            "similarity": result["similarity"],
+            "verdict": result["verdict"],
+            "regions_analyzed": result.get(
+                "regions_analyzed", 0
+            ),
+            "deep_features_used": result.get(
+                "deep_features_used", False
+            ),
+            "captured_image_url": captured_url,
+            "original_image_url": original_url,
+            "database_mode": db.mode,
+            "chain_mode": chain.mode
+        })
+
+    except Exception as e:
+        print("Verification error:", str(e))
+
+        return jsonify({
+            "ok": False,
+            "error": "Product verification failed.",
+            "details": str(e)
+        }), 500
+
+    finally:
+        remove_temp_file(captured_path)
+        remove_temp_file(original_path)
+
 
         # -------------------------------------------------------------
         # FIX: Check exact image hash before ORB comparison
@@ -954,3 +1112,6 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=5000,
     )
+
+
+
